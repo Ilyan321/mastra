@@ -67,7 +67,7 @@ importers:
         specifier: ^7.2.0
         version: 7.2.0
       rollup:
-        specifier: ^4.64.10
+        specifier: ^4.67.4
         version: 4.67.4
       tinyglobby:
         specifier: ^0.2.17
