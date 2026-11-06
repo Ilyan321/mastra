@@ -14,14 +14,30 @@ Unlike other providers that have fixed model names, Azure uses **deployment name
 
 ## Usage
 
-```typescript
-import { Agent } from "@mastra/core/agent";
+> **Note:** Azure OpenAI is not registered by default. You must configure and register `AzureOpenAIGateway` with your `Mastra` instance before the `azure-openai/*` deployment model identifier can resolve.
 
+```typescript
+import { Mastra } from "@mastra/core";
+import { Agent } from "@mastra/core/agent";
+import { AzureOpenAIGateway } from "@mastra/core/llm";
+
+// 1. Register the Azure OpenAI gateway
+export const mastra = new Mastra({
+  gateways: {
+    "azure-openai": new AzureOpenAIGateway({
+      resourceName: "my-openai-resource",
+      apiKey: process.env.AZURE_API_KEY!,
+      deployments: ["my-gpt-5-4-deployment"],
+    }),
+  },
+});
+
+// 2. Use the deployment in your Agent
 const agent = new Agent({
   id: "my-agent",
   name: "My Agent",
   instructions: "You are a helpful assistant",
-  model: "azure-openai/my-gpt-5-4-deployment"  // Use your Azure deployment name (autocompleted in dev mode)
+  model: "azure-openai/my-gpt-5-4-deployment"  // Resolved through registered gateway
 });
 
 // Generate a response
