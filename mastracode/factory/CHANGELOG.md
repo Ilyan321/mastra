@@ -1,5 +1,83 @@
 # @mastra/factory
 
+## 0.28.0-alpha.1
+
+### Minor Changes
+
+- Each project's boards now live in its database, and admins can edit them. Factory stores the built-in Work board and every board passed to `MastraFactory({ boards })` in a project once: when the project is created, and in existing projects the first time Factory loads them (including at startup). Factory then serves the stored board, so what you see in the database is the board that runs. Work and app boards keep their code behaviour, so edits can't break the work their code runs. ([#29317](https://github.com/mastra-ai/mastra/pull/29317))
+
+  ```bash
+  # Edit the project's Work board (the whole board, with its revision)
+  curl -X PATCH "$FACTORY_URL/web/factory/projects/$PROJECT/boards/work" -H 'content-type: application/json' -d @work.json
+
+  # Back to Factory's current definition, at the next revision
+  curl -X POST "$FACTORY_URL/web/factory/projects/$PROJECT/boards/work/reset" -H 'content-type: application/json' -d '{"expectedRevision": 3}'
+  ```
+
+  **What you can change:** names and descriptions, extra next phases, when a phase starts on its own, when its exit tool is approved on its own, runner instructions, and new phases.
+
+  **What stays fixed on Work and app boards:** phases the code declares, their kind, the first phase, the runner context and skill of phases whose work runs in code, declared exit tools, and the moves Factory's code makes between phases. Edits that change these are refused with `422 code_behaviour`, listing each conflict.
+
+  **Releases don't update existing projects' boards.** A newer Work default or a changed app board doesn't reach a project that already stored the board. Resetting a board rewrites it to Factory's current definition at the next revision, so revisions never go back and an editor holding an older one is refused. A board a project deleted is not stored again. App boards can be deleted; the Work board can't, boards can't be created over a code board's key (`409 code_board`), and the legacy Review board stays read-only. Boards a release no longer fits are served with the code behaviour that still fits and a `problems` entry for anything dropped.
+
+  **Boards from code:** `factory.upsertBoard()` writes a board definition into the projects you name (or all of them), creating it where it's missing and replacing it at the next revision where it exists, with the same checks as the boards API. It runs only when you call it:
+
+  ```ts
+  const bugs = {
+    key: 'bugs',
+    name: 'Bugs',
+    phases: [
+      { key: 'reported', name: 'Reported', kind: 'resting', nextPhases: ['fixing'] },
+      { key: 'fixing', name: 'Fixing', kind: 'working', runner: { context: 'work' }, nextPhases: ['fixed'] },
+      { key: 'fixed', name: 'Fixed', kind: 'terminal' },
+    ],
+  } satisfies StoredBoardInput;
+
+  const factory = new MastraFactory({ storage });
+  await factory.prepare();
+  const { inserted, updated, unchanged } = await factory.upsertBoard(bugs, { projects: 'all' });
+  ```
+
+  **Deprecated:** `defineBoard()` and the `boards` option of `MastraFactory`. They keep working; use `factory.upsertBoard()` or the boards API instead. Removal is tracked in mastra-ai/mastra#28920.
+
+- Added voice input to the Factory composer. Click the mic to dictate: the clip is transcribed server-side and the text is appended to your draft. Until a speech-to-text key is set up, the mic opens the voice input settings instead of recording. ([#29366](https://github.com/mastra-ai/mastra/pull/29366))
+
+  Voice input follows the same rule as chats in that Factory:
+
+  - **Factory model scope**: everyone uses the Factory's voice model with organization keys. Only organization admins can change the model.
+  - **Personal or hybrid model scope**: each member uses their own voice model with their own keys. Organization keys are never used.
+
+  Configure it in **Settings → Models → Voice input**. The model picker only offers models with a key on that side, and **Add provider** saves a key for any supported provider: OpenAI, Mistral Voxtral, Groq, Deepgram, and the other OpenAI-compatible hosts in the Mastra Code speech-to-text registry. Voice uses the same key store as chat models. OAuth subscriptions are never used for transcription. With sign-in enabled, deployment env keys aren't used either; in local mode the provider env var applies before a saved key.
+
+- Slack voice clips now reach the agent as text. When someone records a voice clip in Slack and sends it to a Factory session (tagging the bot, in a DM, or in a thread the bot is already in), Factory transcribes it and the transcript becomes the message, so the agent answers it like a typed message. Uploaded audio files stay attachments, as before. The thread's Factory decides whose model and key apply: a Factory with the **factory** model scope uses its own voice model from **Settings → Models → Voice input** and the organization's key; any other scope, or a thread with no Factory session, uses the sender's own voice model and personal key, never the organization's. If the clip can't be transcribed (no key, too long, can't be downloaded, timed out, provider error), the clip is dropped from the message and the sender gets a card only they can see, with the reason and, for a missing, rejected or out-of-credit key, an **Open voice settings** button. A message left with nothing but mentions doesn't start a run. ([#29372](https://github.com/mastra-ai/mastra/pull/29372))
+
+- Composer dictation with Mistral streams: words appear in the draft while you speak. Other speech-to-text providers, and a working Mistral key that can't start a live session, record a clip and transcribe it when you stop; a rejected or out-of-credit Mistral key fails before the microphone opens. Send waits until dictation finishes, so a message never goes out half-transcribed. ([#29573](https://github.com/mastra-ai/mastra/pull/29573))
+
+  Each member can start 20 transcriptions or live dictations a minute on each Factory server process; past that, voice input answers 429 with `Retry-After`. Voice errors in the web app show a short, fixed reason, never the provider's raw error text.
+
+### Patch Changes
+
+- Fixed two board automation gaps. A plan approved on its own now resumes the planning run instead of failing without a caller identity. Work's PR review phase now starts a pull request's review on its own when the phase is set to start automatically. ([#29317](https://github.com/mastra-ai/mastra/pull/29317))
+
+- Improved Factory response times: ([#29519](https://github.com/mastra-ai/mastra/pull/29519))
+
+  - A session following many cards now reads them in one batch per step, instead of four queries per card.
+  - The phase signal, `factory_inspect_work_item`, `factory_list_work_items`, `factory_list_attention` and `#123` lookups no longer copy every card of the board on each call.
+  - Filing a card without a parent no longer reads every card in the project.
+  - When model credential storage fails to start (for example, a missing encryption key), Factory retries it every 15 seconds instead of on every request and model call.
+
+- Factory opens faster. When you open a page, the web UI now starts what it needs at the same time as the sign-in check: your Factories, the sidebar's sessions, boards and work items, the board's intake settings and connection status, and the page's own code. It no longer waits for each step to finish before starting the next. ([#29434](https://github.com/mastra-ai/mastra/pull/29434))
+
+- Thread pages load faster: they no longer download the code editor bundle up front. ([#29554](https://github.com/mastra-ai/mastra/pull/29554))
+
+- Fixed the Factory board briefly failing with "Board item … has no work item …" when someone deleted a card while the board was refreshing. The deleted card now just disappears from the board, and looking up a card while it is being deleted finds nothing instead of failing. ([#29565](https://github.com/mastra-ai/mastra/pull/29565))
+
+- Updated dependencies [[`a0068a9`](https://github.com/mastra-ai/mastra/commit/a0068a9ad1fb0a31ae60a07ecbeae41a32ea4081), [`cb2b399`](https://github.com/mastra-ai/mastra/commit/cb2b399294fe2c66e8391a48cf96cdefb157044a), [`bb0fcd6`](https://github.com/mastra-ai/mastra/commit/bb0fcd6211a416cece10c20e11f6f3cb70b4c93b), [`592a907`](https://github.com/mastra-ai/mastra/commit/592a9071cae12ef7d1defa5f7942f1a9cbdaa340), [`3cf319b`](https://github.com/mastra-ai/mastra/commit/3cf319b5af74aeebb1b70bd29ec539fbd2af4bb8), [`8960f55`](https://github.com/mastra-ai/mastra/commit/8960f55dec7ebf39b460ee8664509d2924065b86), [`b518fc9`](https://github.com/mastra-ai/mastra/commit/b518fc9abeb05093aff4b1bb3e74f018e3612078), [`cd369c3`](https://github.com/mastra-ai/mastra/commit/cd369c334cf5af81597d7d61e7419b390f92365b), [`f94beac`](https://github.com/mastra-ai/mastra/commit/f94beac86288cb94e2973c9ed492c8f0d68b919d), [`544224c`](https://github.com/mastra-ai/mastra/commit/544224c38f61d08a0b9952d202366fb3c6cc5bd9), [`a873e2d`](https://github.com/mastra-ai/mastra/commit/a873e2df4335b4cd7d50d4d2d26b166f976af9e3), [`23308f9`](https://github.com/mastra-ai/mastra/commit/23308f9c193ef852c28f6ec1c6e872f75363c5f7), [`8d07b0b`](https://github.com/mastra-ai/mastra/commit/8d07b0b293812d84c3f45c2806eb53ed45f58324), [`f7320ab`](https://github.com/mastra-ai/mastra/commit/f7320abd205aa865e3ae467b7bf82373af30a6aa), [`2f93851`](https://github.com/mastra-ai/mastra/commit/2f93851c37410a9d9740263a636e802ef9ee2f8d), [`75983cd`](https://github.com/mastra-ai/mastra/commit/75983cdb05ffa4f70aac528220c7fbe5cfa2baf3)]:
+  - @mastra/core@1.83.0-alpha.1
+  - @mastra/auth-studio@1.3.12-alpha.0
+  - @mastra/code-sdk@1.19.0-alpha.1
+  - @mastra/mcp@2.9.0-alpha.1
+
 ## 0.28.0-alpha.0
 
 ### Minor Changes

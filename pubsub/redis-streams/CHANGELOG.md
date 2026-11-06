@@ -1,5 +1,14 @@
 # @mastra/redis-streams
 
+## 0.8.1-alpha.1
+
+### Patch Changes
+
+- Fixed publishes failing when the Redis connection dropped mid-write. A publish that fails with a closed socket, `ECONNRESET`, `EPIPE`, or a connection timeout now retries at the transport level for up to two minutes, as it already did while Redis was loading after a restart. If Redis wrote the event but the reply was lost, the retry appends it again, so subscribers can receive a duplicate delivery with the same event id. ([#29512](https://github.com/mastra-ai/mastra/pull/29512))
+
+- Updated dependencies [[`a0068a9`](https://github.com/mastra-ai/mastra/commit/a0068a9ad1fb0a31ae60a07ecbeae41a32ea4081), [`bb0fcd6`](https://github.com/mastra-ai/mastra/commit/bb0fcd6211a416cece10c20e11f6f3cb70b4c93b), [`8960f55`](https://github.com/mastra-ai/mastra/commit/8960f55dec7ebf39b460ee8664509d2924065b86), [`b518fc9`](https://github.com/mastra-ai/mastra/commit/b518fc9abeb05093aff4b1bb3e74f018e3612078), [`cd369c3`](https://github.com/mastra-ai/mastra/commit/cd369c334cf5af81597d7d61e7419b390f92365b), [`f94beac`](https://github.com/mastra-ai/mastra/commit/f94beac86288cb94e2973c9ed492c8f0d68b919d), [`23308f9`](https://github.com/mastra-ai/mastra/commit/23308f9c193ef852c28f6ec1c6e872f75363c5f7), [`f7320ab`](https://github.com/mastra-ai/mastra/commit/f7320abd205aa865e3ae467b7bf82373af30a6aa), [`2f93851`](https://github.com/mastra-ai/mastra/commit/2f93851c37410a9d9740263a636e802ef9ee2f8d), [`75983cd`](https://github.com/mastra-ai/mastra/commit/75983cdb05ffa4f70aac528220c7fbe5cfa2baf3)]:
+  - @mastra/core@1.83.0-alpha.1
+
 ## 0.8.1-alpha.0
 
 ### Patch Changes
